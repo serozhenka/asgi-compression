@@ -1,3 +1,3 @@
 .PHONY: test
 test:
-	pytest -s
+	@uv run pytest -s

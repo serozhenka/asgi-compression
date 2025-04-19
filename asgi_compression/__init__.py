@@ -1,10 +1,15 @@
-from .brotli import BrotliMiddleware, BrotliResponder
-from .gzip import GZipMiddleware, GZipResponder, IdentityResponder
+from .base import CompressionAlgorithm, ContentEncoding
+from .brotli import BrotliAlgorithm, BrotliMode
+from .gzip import GzipAlgorithm
+from .identity import IdentityAlgorithm
+from .middleware import CompressionMiddleware
 
 __all__ = [
-    "GZipMiddleware",
-    "GZipResponder",
-    "BrotliMiddleware",
-    "BrotliResponder",
-    "IdentityResponder",
+    "CompressionMiddleware",
+    "CompressionAlgorithm",
+    "ContentEncoding",
+    "GzipAlgorithm",
+    "BrotliAlgorithm",
+    "BrotliMode",
+    "IdentityAlgorithm",
 ]

@@ -1,7 +1,16 @@
+from typing import Any
 import pytest
 from httpx import AsyncClient
+from starlette.applications import Starlette
+from starlette.responses import PlainTextResponse
+from starlette.routing import Route
+
+from asgi_compression.brotli import BrotliAlgorithm
+from asgi_compression.gzip import GzipAlgorithm
+from asgi_compression.middleware import CompressionMiddleware
 
 from .types import Encoding
+from .utils import get_test_client
 
 
 def determine_encoding(request: pytest.FixtureRequest) -> Encoding:
@@ -121,7 +130,7 @@ async def test_compression_ignored_on_server_sent_events(
         assert "Content-Length" not in response.headers
         assert response.headers["Content-Type"].startswith("text/event-stream")
 
-        current_message = {}
+        current_message: dict[str, Any] = {}
         completed_messages = []
 
         async for line in response.aiter_lines():
@@ -145,3 +154,81 @@ async def test_compression_ignored_on_server_sent_events(
                 "event": "message",
                 "data": "x" * 400,
             }
+
+
+async def test_multiple_algorithms_negotiation():
+    """Test that the middleware correctly negotiates between multiple algorithms."""
+
+    async def homepage(request):
+        return PlainTextResponse("x" * 4000)
+
+    app = Starlette(routes=[Route("/", endpoint=homepage)])
+
+    middleware = CompressionMiddleware(
+        app=app,
+        algorithms=[
+            # Order matters - first match will be used
+            BrotliAlgorithm(quality=4),
+            GzipAlgorithm(compresslevel=6),
+        ],
+    )
+
+    async with get_test_client(middleware) as client:
+        response = await client.get(
+            "/",
+            headers={"accept-encoding": "br, gzip"},
+        )
+        assert response.status_code == 200
+        assert response.headers["Content-Encoding"] == "br"
+
+        response = await client.get("/", headers={"accept-encoding": "gzip"})
+        assert response.status_code == 200
+        assert response.headers["Content-Encoding"] == "gzip"
+
+        response = await client.get(
+            "/",
+            headers={"accept-encoding": "identity"},
+        )
+        assert response.status_code == 200
+        assert "Content-Encoding" not in response.headers
+
+
+async def test_custom_minimum_size():
+    """Test that the minimum size setting is respected."""
+
+    async def small_response(request):
+        return PlainTextResponse("x" * 100)
+
+    async def large_response(request):
+        return PlainTextResponse("x" * 2000)
+
+    app = Starlette(
+        routes=[
+            Route("/small", endpoint=small_response),
+            Route("/large", endpoint=large_response),
+        ]
+    )
+
+    # Set a high minimum size
+    middleware = CompressionMiddleware(
+        app=app,
+        algorithms=[GzipAlgorithm()],
+        minimum_size=1000,  # Only compress responses larger than 1KB
+    )
+
+    async with get_test_client(middleware) as client:
+        # Small response should not be compressed
+        response = await client.get(
+            "/small",
+            headers={"accept-encoding": "gzip"},
+        )
+        assert response.status_code == 200
+        assert "Content-Encoding" not in response.headers
+
+        # Large response should be compressed
+        response = await client.get(
+            "/large",
+            headers={"accept-encoding": "gzip"},
+        )
+        assert response.status_code == 200
+        assert response.headers["Content-Encoding"] == "gzip"

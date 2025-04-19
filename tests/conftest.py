@@ -9,7 +9,7 @@ from django.core.asgi import get_asgi_application
 from django.http import HttpResponse, StreamingHttpResponse
 from django.urls import path
 from django_eventstream.utils import sse_encode_event
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 from litestar import Litestar, get
 from litestar.response import ServerSentEvent, ServerSentEventMessage
 from pytest import FixtureRequest
@@ -23,11 +23,13 @@ from starlette.responses import (
 from starlette.routing import Route
 from typing_extensions import assert_never
 
-from asgi_compression.brotli import BrotliMiddleware
-from asgi_compression.gzip import GZipMiddleware
+from asgi_compression.brotli import BrotliAlgorithm
+from asgi_compression.gzip import GzipAlgorithm
+from asgi_compression.middleware import CompressionMiddleware
 from asgi_compression.types import ASGIApp
 
 from .types import Encoding, Framework
+from .utils import get_test_client
 
 
 def get_django_app() -> ASGIApp:
@@ -257,17 +259,19 @@ async def client(request: FixtureRequest) -> AsyncGenerator[AsyncClient, None]:
     else:
         assert_never(framework)
 
-    # Apply the appropriate middleware
+    # Create the appropriate algorithm based on encoding type
     if encoding == "gzip":
-        middleware = GZipMiddleware(app)
+        middleware = CompressionMiddleware(
+            app=app,
+            algorithms=[GzipAlgorithm()],
+        )
     elif encoding == "br":
-        middleware = BrotliMiddleware(app)
+        middleware = CompressionMiddleware(
+            app=app,
+            algorithms=[BrotliAlgorithm()],
+        )
     else:
         assert_never(encoding)
 
-    # Create and yield the client
-    async with AsyncClient(
-        transport=ASGITransport(app=middleware),
-        base_url="http://test",
-    ) as client:
+    async with get_test_client(middleware) as client:
         yield client

@@ -1,30 +1,44 @@
 import typing
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
 
 from .types import ASGIApp, Headers, Message, Receive, Scope, Send
 
 DEFAULT_EXCLUDED_CONTENT_TYPES = ("text/event-stream",)
 
 
+class ContentEncoding(str, Enum):
+    GZIP = "gzip"
+    BROTLI = "br"
+    IDENTITY = "identity"
+
+
 async def unattached_send(message: Message) -> typing.NoReturn:
     raise RuntimeError("send awaitable not set")  # pragma: no cover
 
 
-class IdentityResponder:
-    content_encoding: str
+class CompressionResponder(ABC):
+    """Base class for all compression responders."""
+
+    content_encoding: ContentEncoding
 
     def __init__(self, app: ASGIApp, minimum_size: int) -> None:
         self.app = app
         self.minimum_size = minimum_size
-        self.send: Send = unattached_send
-        self.initial_message: Message = {}
-        self.started = False
-        self.content_encoding_set = False
-        self.content_type_is_excluded = False
+        self._send: Send = unattached_send
+        self._initial_message: Message = {}
+        self._started = False
+        self._content_encoding_set = False
+        self._content_type_is_excluded = False
 
     async def __call__(
-        self, scope: Scope, receive: Receive, send: Send
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
     ) -> None:
-        self.send = send
+        self._send = send
         await self.app(scope, receive, self.send_with_compression)
 
     async def send_with_compression(self, message: Message) -> None:
@@ -32,37 +46,37 @@ class IdentityResponder:
         if message_type == "http.response.start":
             # Don't send the initial message until we've determined how to
             # modify the outgoing headers correctly.
-            self.initial_message = message
-            headers = Headers(raw=self.initial_message["headers"])
+            self._initial_message = message
+            headers = Headers(raw=self._initial_message["headers"])
 
-            self.content_encoding_set = "content-encoding" in headers
-            self.content_type_is_excluded = headers.get(
+            self._content_encoding_set = "content-encoding" in headers
+            self._content_type_is_excluded = headers.get(
                 "content-type", ""
             ).startswith(DEFAULT_EXCLUDED_CONTENT_TYPES)
 
         elif message_type == "http.response.body" and (
-            self.content_encoding_set or self.content_type_is_excluded
+            self._content_encoding_set or self._content_type_is_excluded
         ):
-            if not self.started:
-                self.started = True
-                await self.send(self.initial_message)
-            await self.send(message)
+            if not self._started:
+                self._started = True
+                await self._send(self._initial_message)
+            await self._send(message)
 
-        elif message_type == "http.response.body" and not self.started:
-            self.started = True
+        elif message_type == "http.response.body" and not self._started:
+            self._started = True
             body = message.get("body", b"")
             more_body = message.get("more_body", False)
 
             if len(body) < self.minimum_size and not more_body:
                 # Don't apply compression to small outgoing responses.
                 # Don't add Vary header for small responses
-                await self.send(self.initial_message)
-                await self.send(message)
+                await self._send(self._initial_message)
+                await self._send(message)
             elif not more_body:
                 # Standard response.
                 body = self.apply_compression(body, more_body=False)
 
-                headers = Headers(raw=self.initial_message["headers"])
+                headers = Headers(raw=self._initial_message["headers"])
                 headers.add_vary_header("Accept-Encoding")
 
                 if body != message["body"]:
@@ -70,14 +84,14 @@ class IdentityResponder:
                     headers["Content-Length"] = str(len(body))
                     message["body"] = body
 
-                self.initial_message["headers"] = headers.encode()
-                await self.send(self.initial_message)
-                await self.send(message)
+                self._initial_message["headers"] = headers.encode()
+                await self._send(self._initial_message)
+                await self._send(message)
             else:
                 # Initial body in streaming response.
                 body = self.apply_compression(body, more_body=True)
 
-                headers = Headers(raw=self.initial_message["headers"])
+                headers = Headers(raw=self._initial_message["headers"])
                 headers.add_vary_header("Accept-Encoding")
 
                 if body != message["body"]:
@@ -87,17 +101,18 @@ class IdentityResponder:
 
                     message["body"] = body
 
-                self.initial_message["headers"] = headers.encode()
-                await self.send(self.initial_message)
-                await self.send(message)
+                self._initial_message["headers"] = headers.encode()
+                await self._send(self._initial_message)
+                await self._send(message)
         elif message_type == "http.response.body":  # pragma: no branch
             # Remaining body in streaming response.
             body = message.get("body", b"")
             more_body = message.get("more_body", False)
 
             message["body"] = self.apply_compression(body, more_body=more_body)
-            await self.send(message)
+            await self._send(message)
 
+    @abstractmethod
     def apply_compression(self, body: bytes, *, more_body: bool) -> bytes:
         """Apply compression on the response body.
 
@@ -105,4 +120,16 @@ class IdentityResponder:
         isn't, it won't be closed automatically until all background tasks
         complete.
         """
-        return body
+        raise NotImplementedError
+
+
+@dataclass
+class CompressionAlgorithm(ABC):
+    """Base class for compression algorithms."""
+
+    type: ContentEncoding
+    minimum_size: int = 500
+
+    def create_responder(self, app: ASGIApp) -> "CompressionResponder":
+        """Create a responder for this compression algorithm."""
+        raise NotImplementedError
