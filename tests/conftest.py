@@ -1,6 +1,6 @@
 import sys
 import types
-from typing import AsyncGenerator, cast, get_args
+from typing import AsyncGenerator, get_args
 
 import django
 import pytest_asyncio
@@ -23,21 +23,26 @@ from starlette.responses import (
 from starlette.routing import Route
 from typing_extensions import assert_never
 
+from asgi_compression.brotli import BrotliMiddleware
 from asgi_compression.gzip import GZipMiddleware
 from asgi_compression.types import ASGIApp
 
-from .types import Framework
+from .types import Encoding, Framework
 
 
 def get_django_app() -> ASGIApp:
-    settings.configure(
-        ROOT_URLCONF="test_urls",
-        INSTALED_APPS=[
-            "django.contrib.contenttypes",
-            "django_eventstream",
-        ],
-        EVENTSTREAM_STORAGE_CLASS="django_eventstream.storage.DjangoModelStorage",
-    )
+    # Check if settings are already configured
+    if not settings.configured:
+        settings.configure(
+            ROOT_URLCONF="test_urls",
+            INSTALED_APPS=[
+                "django.contrib.contenttypes",
+                "django_eventstream",
+            ],
+            EVENTSTREAM_STORAGE_CLASS="django_eventstream.storage.DjangoModelStorage",
+        )
+        django.setup()
+
     urls_module = types.ModuleType("test_urls")
     sys.modules["test_urls"] = urls_module
 
@@ -103,7 +108,7 @@ def get_django_app() -> ASGIApp:
             path("server_sent_events", server_sent_events),
         ],
     )
-    django.setup()
+
     return get_asgi_application()
 
 
@@ -227,9 +232,22 @@ def get_litestar_app() -> ASGIApp:
     )  # type: ignore
 
 
-@pytest_asyncio.fixture(scope="session", params=list(get_args(Framework)))
+# Define a parameterized fixture that generates combinations of frameworks and middlewares
+@pytest_asyncio.fixture(
+    scope="session",
+    params=[
+        f"{framework}-{encoding}"
+        for framework in get_args(Framework)
+        for encoding in get_args(Encoding)
+    ],
+)
 async def client(request: FixtureRequest) -> AsyncGenerator[AsyncClient, None]:
-    framework = cast(Framework, request.param)
+    # Split the parameter into framework and middleware parts
+    param_parts = request.param.split("-")
+    framework = param_parts[0]
+    encoding = param_parts[1]
+
+    # Get the appropriate ASGI app based on framework
     if framework == "django":
         app = get_django_app()
     elif framework == "starlette":
@@ -239,8 +257,17 @@ async def client(request: FixtureRequest) -> AsyncGenerator[AsyncClient, None]:
     else:
         assert_never(framework)
 
+    # Apply the appropriate middleware
+    if encoding == "gzip":
+        middleware = GZipMiddleware(app)
+    elif encoding == "br":
+        middleware = BrotliMiddleware(app)
+    else:
+        assert_never(encoding)
+
+    # Create and yield the client
     async with AsyncClient(
-        transport=ASGITransport(app=GZipMiddleware(app)),
+        transport=ASGITransport(app=middleware),
         base_url="http://test",
     ) as client:
         yield client
