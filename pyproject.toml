@@ -1,0 +1,36 @@
+[project]
+name = "asgi-compression"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "multidict>=6.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "django>=4.2.20",
+    "django-eventstream>=4.5.1",
+    "httpx>=0.28.1",
+    "litestar>=2.15.1",
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.25.3",
+    "sse-starlette>=2.2.1",
+    "starlette>=0.46.1",
+    "typing-extensions>=4.12.2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+
+[tool.ruff]
+line-length = 80
+
+[tool.ruff.lint.isort]
+known-first-party = ["asgi-compression"]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
