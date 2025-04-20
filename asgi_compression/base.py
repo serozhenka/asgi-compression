@@ -6,11 +6,13 @@ from enum import Enum
 from .types import ASGIApp, Headers, Message, Receive, Scope, Send
 
 DEFAULT_EXCLUDED_CONTENT_TYPES = ("text/event-stream",)
+DEFAULT_MINIMUM_SIZE = 500
 
 
 class ContentEncoding(str, Enum):
     GZIP = "gzip"
     BROTLI = "br"
+    ZSTD = "zstd"
     IDENTITY = "identity"
 
 
@@ -128,8 +130,11 @@ class CompressionAlgorithm(ABC):
     """Base class for compression algorithms."""
 
     type: ContentEncoding
-    minimum_size: int = 500
+    minimum_size: int = DEFAULT_MINIMUM_SIZE
 
     def create_responder(self, app: ASGIApp) -> "CompressionResponder":
         """Create a responder for this compression algorithm."""
         raise NotImplementedError
+
+    def check_available(self) -> None:
+        """Check if the algorithm is available in the current environment."""

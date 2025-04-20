@@ -3,6 +3,7 @@ from .brotli import BrotliAlgorithm, BrotliMode
 from .gzip import GzipAlgorithm
 from .identity import IdentityAlgorithm
 from .middleware import CompressionMiddleware
+from .zstd import ZstdAlgorithm
 
 __all__ = [
     "CompressionMiddleware",
@@ -12,4 +13,5 @@ __all__ = [
     "BrotliAlgorithm",
     "BrotliMode",
     "IdentityAlgorithm",
+    "ZstdAlgorithm",
 ]

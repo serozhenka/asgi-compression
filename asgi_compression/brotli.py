@@ -1,12 +1,23 @@
 import io
 from dataclasses import dataclass
 from enum import Enum
-
-import brotli
-from typing_extensions import assert_never
+from typing import TYPE_CHECKING
 
 from .base import CompressionAlgorithm, CompressionResponder, ContentEncoding
 from .types import ASGIApp
+
+if TYPE_CHECKING:
+    import brotli
+
+
+def import_brotli() -> None:
+    global brotli
+    try:
+        import brotli
+    except ImportError as e:
+        raise ImportError(
+            "brotli is not installed, run `pip install brotli`]"
+        ) from e
 
 
 class BrotliMode(Enum):
@@ -22,7 +33,7 @@ class BrotliMode(Enum):
         elif self == BrotliMode.GENERIC:
             return brotli.MODE_GENERIC
         else:
-            assert_never(self)
+            assert False, f"Expected code to be unreachable, but got: {self}"
 
 
 class BrotliResponder(CompressionResponder):
@@ -40,6 +51,8 @@ class BrotliResponder(CompressionResponder):
         lgblock: int = 0,
     ) -> None:
         super().__init__(app, minimum_size)
+
+        import_brotli()
 
         self.brotli_buffer = io.BytesIO()
         self.compressor = brotli.Compressor(
@@ -83,3 +96,6 @@ class BrotliAlgorithm(CompressionAlgorithm):
             lgwin=self.lgwin,
             lgblock=self.lgblock,
         )
+
+    def check_available(self) -> None:
+        import_brotli()

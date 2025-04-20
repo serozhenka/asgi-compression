@@ -1,20 +1,32 @@
 from typing import Any
+
 import pytest
 from httpx import AsyncClient
 from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
+from typing_extensions import assert_never
 
+from asgi_compression import brotli, zstd
 from asgi_compression.brotli import BrotliAlgorithm
 from asgi_compression.gzip import GzipAlgorithm
 from asgi_compression.middleware import CompressionMiddleware
+from asgi_compression.zstd import ZstdAlgorithm
 
 from .types import Encoding
-from .utils import get_test_client
+from .utils import get_test_client, unimport_module
 
 
 def determine_encoding(request: pytest.FixtureRequest) -> Encoding:
-    return "gzip" if "gzip" in request.node.callspec.id else "br"
+    id_str = request.node.callspec.id
+    if "gzip" in id_str:
+        return "gzip"
+    elif "br" in id_str:
+        return "br"
+    elif "zstd" in id_str:
+        return "zstd"
+    else:
+        assert_never(id_str)
 
 
 async def test_middleware_responds_to_proper_encoding(
@@ -170,20 +182,27 @@ async def test_multiple_algorithms_negotiation():
             # Order matters - first match will be used
             BrotliAlgorithm(quality=4),
             GzipAlgorithm(compresslevel=6),
+            ZstdAlgorithm(level=3),
         ],
     )
 
     async with get_test_client(middleware) as client:
         response = await client.get(
             "/",
-            headers={"accept-encoding": "br, gzip"},
+            headers={"accept-encoding": "br, gzip, zstd"},
         )
         assert response.status_code == 200
         assert response.headers["Content-Encoding"] == "br"
 
-        response = await client.get("/", headers={"accept-encoding": "gzip"})
+        response = await client.get(
+            "/", headers={"accept-encoding": "gzip, zstd"}
+        )
         assert response.status_code == 200
         assert response.headers["Content-Encoding"] == "gzip"
+
+        response = await client.get("/", headers={"accept-encoding": "zstd"})
+        assert response.status_code == 200
+        assert response.headers["Content-Encoding"] == "zstd"
 
         response = await client.get(
             "/",
@@ -232,3 +251,53 @@ async def test_custom_minimum_size():
         )
         assert response.status_code == 200
         assert response.headers["Content-Encoding"] == "gzip"
+
+
+async def test_zstd_compression():
+    """Test specific Zstandard compression features."""
+
+    async def homepage(request):
+        return PlainTextResponse("x" * 4000)
+
+    app = Starlette(routes=[Route("/", endpoint=homepage)])
+
+    middleware = CompressionMiddleware(app=app, algorithms=[ZstdAlgorithm()])
+
+    async with get_test_client(middleware) as client:
+        response = await client.get(
+            "/",
+            headers={"accept-encoding": "zstd"},
+        )
+        assert response.status_code == 200
+        assert response.text == "x" * 4000
+        assert response.headers["Content-Encoding"] == "zstd"
+        assert response.headers["Vary"] == "Accept-Encoding"
+        assert int(response.headers["Content-Length"]) < 4000
+
+
+def test_brotli_not_available(monkeypatch: pytest.MonkeyPatch):
+    unimport_module(
+        monkeypatch=monkeypatch,
+        module_name="brotli",
+        to_reload=brotli,
+    )
+    app = Starlette(routes=[])
+    with pytest.raises(ImportError):
+        CompressionMiddleware(
+            app=app,
+            algorithms=[BrotliAlgorithm()],
+        )
+
+
+def test_zstd_not_available(monkeypatch: pytest.MonkeyPatch):
+    unimport_module(
+        monkeypatch=monkeypatch,
+        module_name="zstandard",
+        to_reload=zstd,
+    )
+    app = Starlette(routes=[])
+    with pytest.raises(ImportError):
+        CompressionMiddleware(
+            app=app,
+            algorithms=[ZstdAlgorithm()],
+        )

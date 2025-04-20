@@ -27,13 +27,13 @@ from asgi_compression.brotli import BrotliAlgorithm
 from asgi_compression.gzip import GzipAlgorithm
 from asgi_compression.middleware import CompressionMiddleware
 from asgi_compression.types import ASGIApp
+from asgi_compression.zstd import ZstdAlgorithm
 
 from .types import Encoding, Framework
 from .utils import get_test_client
 
 
 def get_django_app() -> ASGIApp:
-    # Check if settings are already configured
     if not settings.configured:
         settings.configure(
             ROOT_URLCONF="test_urls",
@@ -48,27 +48,29 @@ def get_django_app() -> ASGIApp:
     urls_module = types.ModuleType("test_urls")
     sys.modules["test_urls"] = urls_module
 
-    def homepage(request):
+    def homepage(_):
         return HttpResponse(b"x" * 4000, content_type="text/plain")
 
-    def small_response(request):
+    def small_response(_):
         return HttpResponse(b"Hello world!", content_type="text/plain")
 
-    def streaming_response(request: Request) -> StreamingHttpResponse:
+    def streaming_response(_: Request) -> StreamingHttpResponse:
         async def generator(
-            bytes: bytes, count: int
+            bytes: bytes,
+            count: int,
         ) -> AsyncGenerator[bytes, None]:
-            for index in range(count):
+            for _ in range(count):
                 yield bytes
 
         streaming = generator(bytes=b"x" * 400, count=10)
         return StreamingHttpResponse(streaming)
 
     def streaming_response_with_content_encoding(
-        request: Request,
+        _: Request,
     ) -> StreamingHttpResponse:
         async def generator(
-            bytes: bytes, count: int
+            bytes: bytes,
+            count: int,
         ) -> AsyncGenerator[bytes, None]:
             for _ in range(count):
                 yield bytes
@@ -78,9 +80,7 @@ def get_django_app() -> ASGIApp:
             streaming, headers={"Content-Encoding": "text"}
         )
 
-    def server_sent_events(
-        request: Request,
-    ) -> StreamingHttpResponse:
+    def server_sent_events(_: Request) -> StreamingHttpResponse:
         async def sse_stream() -> AsyncGenerator[bytes, None]:
             for i in range(10):
                 event = {"id": str(i), "event": "message", "data": "x" * 400}
@@ -115,27 +115,29 @@ def get_django_app() -> ASGIApp:
 
 
 def get_starlette_app() -> ASGIApp:
-    def homepage(request: Request) -> PlainTextResponse:
+    def homepage(_: Request) -> PlainTextResponse:
         return PlainTextResponse("x" * 4000)
 
-    def small_response(request: Request) -> PlainTextResponse:
+    def small_response(_: Request) -> PlainTextResponse:
         return PlainTextResponse("Hello world!")
 
-    def streaming_response(request: Request) -> StreamingResponse:
+    def streaming_response(_: Request) -> StreamingResponse:
         async def generator(
-            bytes: bytes, count: int
+            bytes: bytes,
+            count: int,
         ) -> AsyncGenerator[bytes, None]:
-            for index in range(count):
+            for _ in range(count):
                 yield bytes
 
         streaming = generator(bytes=b"x" * 400, count=10)
         return StreamingResponse(streaming, status_code=200)
 
     def streaming_response_with_content_encoding(
-        request: Request,
+        _: Request,
     ) -> StreamingResponse:
         async def generator(
-            bytes: bytes, count: int
+            bytes: bytes,
+            count: int,
         ) -> AsyncGenerator[bytes, None]:
             for _ in range(count):
                 yield bytes
@@ -147,7 +149,7 @@ def get_starlette_app() -> ASGIApp:
             headers={"Content-Encoding": "text"},
         )
 
-    def server_sent_events(request: Request) -> EventSourceResponse:
+    def server_sent_events(_: Request) -> EventSourceResponse:
         async def generator() -> AsyncGenerator[dict, None]:
             for i in range(10):
                 yield {"event": "message", "id": str(i), "data": "x" * 400}
@@ -183,9 +185,10 @@ def get_litestar_app() -> ASGIApp:
     @get("/streaming_response")
     async def streaming_response(request: Request) -> StreamingResponse:
         async def generator(
-            bytes: bytes, count: int
+            bytes: bytes,
+            count: int,
         ) -> AsyncGenerator[bytes, None]:
-            for index in range(count):
+            for _ in range(count):
                 yield bytes
 
         streaming = generator(bytes=b"x" * 400, count=10)
@@ -196,9 +199,10 @@ def get_litestar_app() -> ASGIApp:
         request: Request,
     ) -> StreamingResponse:
         async def generator(
-            bytes: bytes, count: int
+            bytes: bytes,
+            count: int,
         ) -> AsyncGenerator[bytes, None]:
-            for index in range(count):
+            for _ in range(count):
                 yield bytes
 
         streaming = generator(bytes=b"x" * 400, count=10)
@@ -234,7 +238,6 @@ def get_litestar_app() -> ASGIApp:
     )  # type: ignore
 
 
-# Define a parameterized fixture that generates combinations of frameworks and middlewares
 @pytest_asyncio.fixture(
     scope="session",
     params=[
@@ -244,34 +247,27 @@ def get_litestar_app() -> ASGIApp:
     ],
 )
 async def client(request: FixtureRequest) -> AsyncGenerator[AsyncClient, None]:
-    # Split the parameter into framework and middleware parts
-    param_parts = request.param.split("-")
-    framework = param_parts[0]
-    encoding = param_parts[1]
+    framework_name, encoding_name = request.param.split("-")
 
-    # Get the appropriate ASGI app based on framework
-    if framework == "django":
+    if framework_name == "django":
         app = get_django_app()
-    elif framework == "starlette":
+    elif framework_name == "starlette":
         app = get_starlette_app()
-    elif framework == "litestar":
+    elif framework_name == "litestar":
         app = get_litestar_app()
     else:
-        assert_never(framework)
+        assert_never(framework_name)
 
-    # Create the appropriate algorithm based on encoding type
-    if encoding == "gzip":
-        middleware = CompressionMiddleware(
-            app=app,
-            algorithms=[GzipAlgorithm()],
-        )
-    elif encoding == "br":
-        middleware = CompressionMiddleware(
-            app=app,
-            algorithms=[BrotliAlgorithm()],
-        )
+    if encoding_name == "gzip":
+        algorithm = GzipAlgorithm()
+    elif encoding_name == "br":
+        algorithm = BrotliAlgorithm()
+    elif encoding_name == "zstd":
+        algorithm = ZstdAlgorithm()
     else:
-        assert_never(encoding)
+        assert_never(encoding_name)
+
+    middleware = CompressionMiddleware(app=app, algorithms=[algorithm])
 
     async with get_test_client(middleware) as client:
         yield client

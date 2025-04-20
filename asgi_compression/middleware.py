@@ -1,6 +1,10 @@
 from typing import List, Optional, Union
 
-from .base import CompressionAlgorithm, CompressionResponder
+from .base import (
+    DEFAULT_MINIMUM_SIZE,
+    CompressionAlgorithm,
+    CompressionResponder,
+)
 from .identity import IdentityAlgorithm
 from .types import ASGIApp, Headers, Receive, Scope, Send
 
@@ -17,7 +21,7 @@ class CompressionMiddleware:
         self,
         app: ASGIApp,
         algorithms: Optional[List[CompressionAlgorithm]] = None,
-        minimum_size: int = 500,
+        minimum_size: int = DEFAULT_MINIMUM_SIZE,
     ) -> None:
         """
         Initialize the compression middleware.
@@ -34,15 +38,27 @@ class CompressionMiddleware:
         self.minimum_size = minimum_size
 
         self.algorithms = algorithms or []
+        for algorithm in self.algorithms:
+            try:
+                algorithm.check_available()
+            except ImportError as e:
+                raise e from e
+
         self._default_algorithm = IdentityAlgorithm(minimum_size=minimum_size)
 
         # Set minimum_size if not explicitly set in the algorithm
         for algorithm in self.algorithms:
-            if algorithm.minimum_size == 500 and minimum_size != 500:
+            if (
+                algorithm.minimum_size == DEFAULT_MINIMUM_SIZE
+                and minimum_size != DEFAULT_MINIMUM_SIZE
+            ):
                 algorithm.minimum_size = minimum_size
 
     async def __call__(
-        self, scope: Scope, receive: Receive, send: Send
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
     ) -> None:
         """ASGI application interface."""
         if scope["type"] != "http":  # pragma: no cover
