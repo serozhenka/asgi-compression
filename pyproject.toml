@@ -1,45 +1,77 @@
 [project]
+authors = [
+    {name = "Serhii Shevchuk", email = "serhii.shevchuk.dev@gmail.com"}
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Web Environment",
+  "Framework :: AsyncIO",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Topic :: Internet :: WWW/HTTP",
+  "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed"
+]
+dependencies = [
+  "multidict>=6.2.0"
+]
+description = "A framework-independent compression middleware for ASGI applications"
+keywords = ["asgi", "compression", "middleware", "gzip", "brotli", "zstandard", "zstd"]
+license = {text = "MIT"}
+maintainers = [
+  {name = "Serhii Shevchuk", email = "serhii.shevchuk.dev@gmail.com"}
+]
 name = "asgi-compression"
-version = "0.1.0"
-description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = [
-    "multidict>=6.2.0",
-]
+version = "0.1.0"
+
+[project.urls]
+Documentation = "https://github.com/serozhenka/asgi-compression"
+Issues = "https://github.com/serozhenka/asgi-compression/issues"
+Source = "https://github.com/serozhenka/asgi-compression"
 
 [project.optional-dependencies]
 all = [
-    "brotli>=1.1.0",
-    "zstandard>=0.23.0",
+  "brotli>=1.1.0",
+  "zstandard>=0.23.0"
 ]
 br = [
-    "brotli>=1.1.0",
+  "brotli>=1.1.0"
 ]
 zstd = [
-    "zstandard>=0.23.0",
+  "zstandard>=0.23.0"
 ]
 
 [dependency-groups]
 dev = [
-    "brotli>=1.1.0",
-    "django>=4.2.20",
-    "django-eventstream>=4.5.1",
-    "httpx>=0.28.1",
-    "litestar>=2.15.1",
-    "pyright>=1.1.399",
-    "pytest>=8.3.5",
-    "pytest-asyncio>=0.25.3",
-    "ruff>=0.11.6",
-    "sse-starlette>=2.2.1",
-    "starlette>=0.46.1",
-    "typing-extensions>=4.12.2",
-    "zstandard>=0.23.0",
+  "brotli>=1.1.0",
+  "django>=4.2.20",
+  "django-eventstream>=4.5.1",
+  "httpx>=0.28.1",
+  "litestar>=2.15.1",
+  "pyright>=1.1.399",
+  "pytest>=8.3.5",
+  "pytest-asyncio>=0.25.3",
+  "ruff>=0.11.6",
+  "sse-starlette>=2.2.1",
+  "starlette>=0.46.1",
+  "typing-extensions>=4.12.2",
+  "zstandard>=0.23.0"
 ]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
+asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 80
@@ -48,5 +80,5 @@ line-length = 80
 known-first-party = ["asgi-compression"]
 
 [build-system]
-requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+requires = ["setuptools"]
