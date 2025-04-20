@@ -15,7 +15,7 @@ def import_zstandard() -> None:
         import zstandard
     except ImportError as e:
         raise ImportError(
-            "zstandard is not installed, run `pip install zstandard`]"
+            'zstandard is not installed, run `pip install "asgi-compression[zstd]"`'
         ) from e
 
 

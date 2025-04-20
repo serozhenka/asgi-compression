@@ -16,7 +16,7 @@ def import_brotli() -> None:
         import brotli
     except ImportError as e:
         raise ImportError(
-            "brotli is not installed, run `pip install brotli`]"
+            'brotli is not installed, run `pip install "asgi-compression[br]"`'
         ) from e
 
 
