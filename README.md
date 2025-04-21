@@ -134,7 +134,7 @@ This project was brought to life thanks to inspiration from:
 - [brotli-asgi](https://github.com/fullonic/brotli-asgi)
 - [zstd-asgi](https://github.com/tuffnatty/zstd-asgi)
 
-Cudos to devs & maintainers of those amazing libraries!
+Kudos to devs & maintainers of those amazing libraries!
 
 ## 📜 License
 
